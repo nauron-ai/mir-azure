@@ -1,0 +1,60 @@
+name: Cancel Obsolete Runs
+
+on:
+  pull_request:
+    types: [closed]
+  delete:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'delete' || github.event.ref_type == 'branch'
+    steps:
+      - name: Cancel obsolete mir-azure runs
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const workflowId = "ci.yml";
+            const branch = context.eventName === "pull_request"
+              ? context.payload.pull_request.head.ref
+              : context.payload.ref;
+
+            if (!branch || ["main", "develop"].includes(branch)) {
+              core.info(`Skipping branch "${branch ?? "unknown"}"`);
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner,
+              repo,
+              workflow_id: workflowId,
+              per_page: 100,
+            });
+
+            const obsoleteRuns = runs.filter((run) => {
+              if (run.head_branch !== branch) {
+                return false;
+              }
+
+              return run.status === "queued" || run.status === "in_progress";
+            });
+
+            if (obsoleteRuns.length === 0) {
+              core.info(`No queued or in-progress mir-azure runs for "${branch}"`);
+              return;
+            }
+
+            for (const run of obsoleteRuns) {
+              core.info(`Canceling run ${run.id} for "${branch}" (${run.status})`);
+              await github.rest.actions.cancelWorkflowRun({
+                owner,
+                repo,
+                run_id: run.id,
+              });
+            }

@@ -1,0 +1,54 @@
+language: "en-US"
+tone_instructions: "Be concise and pragmatic. Prioritize correctness, regressions, edge cases, resource handling, operability, and readability. Avoid style-only suggestions unless they hide a real bug or clearly violate the repository's coding standards."
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  review_status: true
+  review_details: false
+  commit_status: true
+  collapse_walkthrough: false
+  changed_files_summary: true
+  sequence_diagrams: false
+  estimate_code_review_effort: true
+  suggested_labels: false
+  suggested_reviewers: false
+  in_progress_fortune: false
+  poem: false
+  enable_prompt_for_ai_agents: false
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+  path_filters:
+    - "src/**"
+    - ".github/**"
+    - "scripts/**"
+    - "Cargo.toml"
+    - "Dockerfile"
+    - ".coderabbit.yaml"
+    - "!target/**"
+    - "!Cargo.lock"
+  path_instructions:
+    - path: "src/**/*.rs"
+      instructions: |
+        Focus on behavioral regressions, data loss, wrong error handling, retry semantics, resource cleanup, subprocess safety, timeouts, and concurrency issues.
+        Treat formatting and naming as low priority unless they hide a correctness problem or make the code materially harder to maintain.
+        Prefer simple control flow, small single-responsibility functions, and files with clear ownership.
+        Flag changed files that clearly grow beyond about 250 lines or mix unrelated responsibilities when a practical split would improve maintainability.
+        Flag excessive nesting, overly dense functions, avoidable clones, magic values, and suggestions that conflict with the repository's Rust conventions.
+        Do not ask for extra comments unless the logic is genuinely hard to understand without them.
+        Prefer findings that explain user impact and missing tests.
+    - path: ".github/workflows/**"
+      instructions: |
+        Focus on broken triggers, wrong branch filters, missing permissions, cache correctness, and steps that can silently pass while skipping verification.
+    - path: "Dockerfile"
+      instructions: |
+        Focus on runtime correctness, missing packages, image size regressions, cache invalidation mistakes, and security-sensitive defaults.
+    - path: "scripts/**"
+      instructions: |
+        Focus on shell safety, quoting, error propagation, portability, and failure handling.
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
