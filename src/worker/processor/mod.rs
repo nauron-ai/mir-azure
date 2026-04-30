@@ -1,6 +1,7 @@
 pub mod context;
 pub mod document;
 pub mod events;
+pub mod extraction;
 pub mod job;
 pub mod media;
 pub mod office;

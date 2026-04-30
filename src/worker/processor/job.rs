@@ -5,10 +5,10 @@ use nauron_contracts::{ArtifactRef, MirEvent, MirRequest, MirStage, SourceRef};
 use thiserror::Error;
 
 use super::events::EventRecorder;
+use super::extraction::extract_markdown;
 use super::media::source_extension;
 use super::progress::build_progress_event;
 use super::result::{create_failure, create_success};
-use super::submission::analyze_document;
 use super::submission_error::DocumentSubmissionError;
 use crate::worker::{processor::WorkerContext, WorkerOutput};
 
@@ -94,7 +94,7 @@ async fn run_job_in_dir(
     ));
     download_source_document(request, ctx, &input_path).await?;
 
-    let markdown = analyze_document(request, ctx, &input_path, events).await?;
+    let markdown = extract_markdown(request, ctx, &input_path, job_dir, events).await?;
     events.push(build_progress_event(
         request,
         MirStage::ProcessingAssemble,

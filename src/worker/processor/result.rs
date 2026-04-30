@@ -79,7 +79,8 @@ fn classify_document_error(error: &DocumentSubmissionError) -> FailureKind {
         | DocumentSubmissionError::PdfSplit(_)
         | DocumentSubmissionError::PdfRasterization(_)
         | DocumentSubmissionError::OfficeConversion(_)
-        | DocumentSubmissionError::OfficeRetry { .. } => FailureKind::Processing,
+        | DocumentSubmissionError::OfficeRetry { .. }
+        | DocumentSubmissionError::MarkItDown { .. } => FailureKind::Processing,
     }
 }
 
