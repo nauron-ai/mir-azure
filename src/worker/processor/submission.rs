@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use nauron_contracts::{MirEvent, MirRequest, MirStage};
+use nauron_contracts::{MirRequest, MirStage};
 use reqwest::Body;
 use reqwest::StatusCode;
 use tokio::fs::File;
@@ -9,6 +9,7 @@ use tokio_util::io::ReaderStream;
 use tracing::info;
 
 use super::document::{file_size, format_size, PreparedDocument};
+use super::events::EventRecorder;
 use super::media::{infer_content_type, is_convertible_office_content_type, is_pdf_content_type};
 use super::progress::build_progress_event;
 use super::rate_limit::retry_delay;
@@ -22,7 +23,7 @@ pub async fn analyze_document(
     request: &MirRequest,
     ctx: &WorkerContext,
     input_path: &Path,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
 ) -> Result<String, DocumentSubmissionError> {
     let content_type = infer_content_type(&request.source);
     let prepared = prepare_document(request, ctx, input_path, content_type, events).await?;
@@ -40,7 +41,7 @@ async fn prepare_document(
     ctx: &WorkerContext,
     input_path: &Path,
     content_type: &'static str,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
 ) -> Result<PreparedDocument, DocumentSubmissionError> {
     let original_size = file_size(input_path).await?;
     if !is_pdf_content_type(content_type) {
@@ -67,7 +68,7 @@ pub(super) async fn submit_prepared_document(
     request: &MirRequest,
     ctx: &WorkerContext,
     prepared: &PreparedDocument,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
     percent: u8,
 ) -> Result<String, DocumentSubmissionError> {
     info!(
@@ -96,7 +97,7 @@ async fn submit_prepared_document_with_retries(
     ctx: &WorkerContext,
     prepared: &PreparedDocument,
     request: &MirRequest,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
     percent: u8,
 ) -> Result<String, DocumentSubmissionError> {
     for attempt in 0..=ANALYZE_RATE_LIMIT_MAX_RETRIES {
@@ -149,7 +150,7 @@ async fn retry_after_invalid_content_length(
     request: &MirRequest,
     ctx: &WorkerContext,
     input_path: &Path,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
     prepared: PreparedDocument,
     azure_error: AzureClientError,
 ) -> Result<String, DocumentSubmissionError> {
@@ -191,7 +192,7 @@ async fn retry_pdf_after_invalid_content_length(
     request: &MirRequest,
     ctx: &WorkerContext,
     input_path: &Path,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
     azure_error: AzureClientError,
 ) -> Result<String, DocumentSubmissionError> {
     let optimized =
@@ -215,7 +216,7 @@ async fn retry_office_after_invalid_content_length(
     request: &MirRequest,
     ctx: &WorkerContext,
     input_path: &Path,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
     azure_error: AzureClientError,
 ) -> Result<String, DocumentSubmissionError> {
     let converted =
