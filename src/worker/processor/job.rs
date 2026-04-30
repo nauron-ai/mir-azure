@@ -1,11 +1,14 @@
 use std::path::Path;
+use std::time::Instant;
 
-use nauron_contracts::{ArtifactRef, MirEvent, MirRequest, MirResult, MirStage, SourceRef};
+use nauron_contracts::{ArtifactRef, MirEvent, MirRequest, MirStage, SourceRef};
 use thiserror::Error;
 
+use super::events::EventRecorder;
+use super::extraction::extract_markdown;
 use super::media::source_extension;
 use super::progress::build_progress_event;
-use super::submission::analyze_document;
+use super::result::{create_failure, create_success};
 use super::submission_error::DocumentSubmissionError;
 use crate::worker::{processor::WorkerContext, WorkerOutput};
 
@@ -19,8 +22,6 @@ pub enum JobError {
     Document(#[from] DocumentSubmissionError),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Unsupported source type")]
-    UnsupportedSource,
     #[error("S3 storage is required to upload artifacts")]
     StorageUnavailable,
 }
@@ -32,26 +33,43 @@ impl From<crate::worker::storage::StorageError> for JobError {
 }
 
 pub async fn process_request(request: &MirRequest, ctx: &WorkerContext) -> WorkerOutput {
-    tracing::info!("Starting to process job: {}", request.job_id);
-    let mut events = vec![build_progress_event(
+    process_request_streaming(request, ctx, |_| {}).await
+}
+
+pub async fn process_request_streaming(
+    request: &MirRequest,
+    ctx: &WorkerContext,
+    mut publish: impl FnMut(MirEvent),
+) -> WorkerOutput {
+    let started_at = Instant::now();
+    tracing::info!(
+        job_id = %request.job_id,
+        context_id = request.context_id,
+        attempt = request.attempt,
+        "mir_azure_job_started"
+    );
+    let mut events = EventRecorder::new(&mut publish);
+    events.push(build_progress_event(
         request,
         MirStage::Received,
         0,
         format!("job accepted (attempt #{})", request.attempt),
-    )];
+    ));
 
     match run_job(request, ctx, &mut events).await {
-        Ok(artifacts) => push_success_events(request, &mut events, artifacts),
-        Err(err) => push_failure_event(request, &mut events, err),
+        Ok(artifacts) => push_success_events(request, &mut events, artifacts, started_at),
+        Err(err) => push_failure_event(request, &mut events, err, started_at),
     }
 
-    WorkerOutput { events }
+    WorkerOutput {
+        events: events.into_events(),
+    }
 }
 
 async fn run_job(
     request: &MirRequest,
     ctx: &WorkerContext,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
 ) -> Result<Vec<ArtifactRef>, JobError> {
     let job_dir = ctx.config().output_root.join(request.job_id.to_string());
     tokio::fs::create_dir_all(&job_dir).await?;
@@ -62,7 +80,7 @@ async fn run_job(
 async fn run_job_in_dir(
     request: &MirRequest,
     ctx: &WorkerContext,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
     job_dir: &Path,
 ) -> Result<Vec<ArtifactRef>, JobError> {
     let input_path = build_input_path(job_dir, &request.source);
@@ -76,7 +94,7 @@ async fn run_job_in_dir(
     ));
     download_source_document(request, ctx, &input_path).await?;
 
-    let markdown = analyze_document(request, ctx, &input_path, events).await?;
+    let markdown = extract_markdown(request, ctx, &input_path, job_dir, events).await?;
     events.push(build_progress_event(
         request,
         MirStage::ProcessingAssemble,
@@ -91,7 +109,7 @@ async fn run_job_in_dir(
         90,
         "uploading artifacts",
     ));
-    let artifacts = upload_markdown(request, ctx, &doc_path, markdown.len()).await?;
+    let artifacts = upload_markdown(request, ctx, &doc_path).await?;
     Ok(artifacts)
 }
 
@@ -124,7 +142,7 @@ async fn download_source_document(
     match &request.source {
         SourceRef::S3 { bucket, key, .. } => {
             let Some(storage) = ctx.storage() else {
-                return Err(JobError::UnsupportedSource);
+                return Err(JobError::StorageUnavailable);
             };
             storage.download_file(bucket, key, input_path).await?;
         }
@@ -140,7 +158,6 @@ async fn upload_markdown(
     request: &MirRequest,
     ctx: &WorkerContext,
     doc_path: &Path,
-    markdown_len: usize,
 ) -> Result<Vec<ArtifactRef>, JobError> {
     let Some(storage) = ctx.storage() else {
         return Err(JobError::StorageUnavailable);
@@ -160,46 +177,58 @@ async fn upload_markdown(
             Some(TEXT_MARKDOWN),
         )
         .await?;
+    let size_bytes = tokio::fs::metadata(doc_path).await?.len();
 
     Ok(vec![ArtifactRef {
         bucket: request.output.bucket.clone(),
         key: doc_key,
         content_type: Some(String::from(TEXT_MARKDOWN)),
-        size_bytes: Some(markdown_len as u64),
+        size_bytes: Some(size_bytes),
     }])
 }
 
 fn push_success_events(
     request: &MirRequest,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
     artifacts: Vec<ArtifactRef>,
+    started_at: Instant,
 ) {
-    tracing::info!("Successfully completed job: {}", request.job_id);
+    let duration_ms = duration_ms(started_at);
+    tracing::info!(
+        job_id = %request.job_id,
+        context_id = request.context_id,
+        duration_ms,
+        "mir_azure_job_finished"
+    );
     events.push(build_progress_event(
         request,
         MirStage::Completed,
         100,
         "job completed",
     ));
-    events.push(MirEvent::Result(MirResult::Success {
-        schema_version: nauron_contracts::SchemaVersion::V1,
-        job_id: request.job_id,
-        context_id: request.context_id,
+    events.push(MirEvent::Result(create_success(
+        request,
         artifacts,
-        stats: None,
-        completed_at: chrono::Utc::now(),
-    }));
+        duration_ms,
+    )));
 }
 
-fn push_failure_event(request: &MirRequest, events: &mut Vec<MirEvent>, err: JobError) {
-    tracing::error!("Job {} failed with error: {:?}", request.job_id, err);
-    events.push(MirEvent::Result(MirResult::Failure {
-        schema_version: nauron_contracts::SchemaVersion::V1,
-        job_id: request.job_id,
-        context_id: request.context_id,
-        kind: nauron_contracts::FailureKind::Internal,
-        message: err.to_string(),
-        details: None,
-        occurred_at: chrono::Utc::now(),
-    }));
+fn push_failure_event(
+    request: &MirRequest,
+    events: &mut EventRecorder<'_>,
+    err: JobError,
+    started_at: Instant,
+) {
+    tracing::error!(
+        job_id = %request.job_id,
+        context_id = request.context_id,
+        duration_ms = duration_ms(started_at),
+        error = ?err,
+        "mir_azure_job_failed"
+    );
+    events.push(MirEvent::Result(create_failure(request, err)));
+}
+
+fn duration_ms(started_at: Instant) -> u64 {
+    started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
 }

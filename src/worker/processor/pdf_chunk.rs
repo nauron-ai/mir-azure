@@ -1,9 +1,10 @@
 use std::path::Path;
 
-use nauron_contracts::{MirEvent, MirRequest, MirStage};
+use nauron_contracts::{MirRequest, MirStage};
 use tracing::info;
 
 use super::document::{file_size, format_size, PreparedDocument};
+use super::events::EventRecorder;
 use super::pdf_chunk_support::{
     build_chunk_path, build_initial_ranges, build_rasterized_chunk_path, finalize_chunk_path,
     PageRange,
@@ -20,7 +21,7 @@ pub async fn analyze_pdf_in_chunks(
     request: &MirRequest,
     ctx: &WorkerContext,
     input_path: &Path,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
 ) -> Result<String, DocumentSubmissionError> {
     let page_count = super::pdf::count_pdf_pages(input_path, ctx.config().subprocess_timeout())
         .await
@@ -60,7 +61,7 @@ async fn analyze_pdf_range(
     request: &MirRequest,
     ctx: &WorkerContext,
     input_path: &Path,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
     range: PageRange,
     percent: u8,
 ) -> Result<String, DocumentSubmissionError> {
@@ -120,7 +121,7 @@ async fn split_failing_range(
     request: &MirRequest,
     ctx: &WorkerContext,
     input_path: &Path,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
     range: PageRange,
     percent: u8,
 ) -> Result<String, DocumentSubmissionError> {
@@ -160,7 +161,7 @@ async fn retry_single_page_as_rasterized_pdf(
     request: &MirRequest,
     ctx: &WorkerContext,
     chunk_path: &Path,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
     range: PageRange,
     percent: u8,
 ) -> Result<String, DocumentSubmissionError> {

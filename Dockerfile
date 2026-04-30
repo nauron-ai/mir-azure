@@ -49,7 +49,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ghostscript \
         libssl3 \
         libreoffice-writer \
+        python3 \
+        python3-pip \
+        python3-venv \
     && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/markitdown \
+    && /opt/markitdown/bin/pip install --no-cache-dir "markitdown[all]==0.1.5" \
+    && ln -s /opt/markitdown/bin/markitdown /usr/local/bin/markitdown
 
 COPY --from=builder /workspace/mir-azure-bin /usr/local/bin/mir-azure
 

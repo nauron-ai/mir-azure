@@ -42,6 +42,8 @@ pub enum DocumentSubmissionError {
         #[source]
         source: Box<DocumentSubmissionError>,
     },
+    #[error("MarkItDown conversion failed ({status}): {stderr}")]
+    MarkItDown { status: String, stderr: String },
 }
 
 impl DocumentSubmissionError {

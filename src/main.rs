@@ -5,11 +5,12 @@ use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::ClientConfig;
 use std::time::Duration;
 use tokio::signal;
+use tokio::sync::mpsc::{self, UnboundedReceiver};
 use tokio_stream::StreamExt;
 use tracing::{error, info};
 
 use mir_azure::azure::AzureDocumentClient;
-use mir_azure::worker::{process_request, WorkerArgs, WorkerContext};
+use mir_azure::worker::{process_request_streaming, WorkerArgs, WorkerContext};
 use nauron_contracts::MirEvent;
 
 const KAFKA_MAX_POLL_INTERVAL_MS: &str = "86400000";
@@ -90,21 +91,54 @@ async fn handle_message(
         request.job_id, request.context_id
     );
 
-    let output = process_request(&request, ctx).await;
     let job_key = request.job_id.to_string();
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let sender = tokio::spawn(publish_events(
+        producer.clone(),
+        ctx.config().progress_topic.clone(),
+        ctx.config().result_topic.clone(),
+        job_key,
+        event_rx,
+    ));
 
-    for event in output.events {
+    let output = process_request_streaming(&request, ctx, |event| {
+        if event_tx.send(event).is_err() {
+            error!("Failed to enqueue event for kafka publish");
+        }
+    })
+    .await;
+    drop(event_tx);
+
+    if let Err(err) = sender.await {
+        error!("Kafka event publisher task failed: {}", err);
+    };
+
+    info!(
+        job_id = %request.job_id,
+        events = output.events.len(),
+        "MIR Azure job events published"
+    );
+
+    let _ = consumer.commit_message(&message, CommitMode::Async);
+}
+
+async fn publish_events(
+    producer: FutureProducer,
+    progress_topic: String,
+    result_topic: String,
+    key: String,
+    mut events: UnboundedReceiver<MirEvent>,
+) {
+    while let Some(event) = events.recv().await {
         let topic = match &event {
-            MirEvent::Progress(_) => &ctx.config().progress_topic,
-            MirEvent::Result(_) => &ctx.config().result_topic,
+            MirEvent::Progress(_) => &progress_topic,
+            MirEvent::Result(_) => &result_topic,
         };
 
-        if let Err(err) = send_event(producer, topic, &event, &job_key).await {
+        if let Err(err) = send_event(&producer, topic, &event, &key).await {
             error!("Failed to send event to kafka: {}", err);
         }
     }
-
-    let _ = consumer.commit_message(&message, CommitMode::Async);
 }
 
 async fn send_event(

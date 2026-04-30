@@ -1,9 +1,10 @@
 use std::path::Path;
 
-use nauron_contracts::{MirEvent, MirRequest, MirStage};
+use nauron_contracts::{MirRequest, MirStage};
 use tracing::info;
 
 use super::document::{file_size, format_size, PreparedDocument};
+use super::events::EventRecorder;
 use super::progress::build_progress_event;
 use super::submission_error::DocumentSubmissionError;
 use crate::worker::processor::WorkerContext;
@@ -12,7 +13,7 @@ pub async fn convert_office_before_send(
     request: &MirRequest,
     ctx: &WorkerContext,
     input_path: &Path,
-    events: &mut Vec<MirEvent>,
+    events: &mut EventRecorder<'_>,
 ) -> Result<PreparedDocument, DocumentSubmissionError> {
     let original_size = file_size(input_path).await?;
     let output_dir = match input_path.parent() {
