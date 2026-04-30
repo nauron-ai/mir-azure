@@ -18,7 +18,7 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const workflowId = "ci.yml";
+            const workflowId = "mir-azure.yml";
             const branch = context.eventName === "pull_request"
               ? context.payload.pull_request.head.ref
               : context.payload.ref;
