@@ -1,5 +1,9 @@
-language: "en-US"
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+inheritance: true
+language: en-US
 tone_instructions: "Be concise and pragmatic. Prioritize correctness, regressions, edge cases, resource handling, operability, and readability. Avoid style-only suggestions unless they hide a real bug or clearly violate the repository's coding standards."
+
 reviews:
   profile: "assertive"
   request_changes_workflow: false
@@ -35,19 +39,31 @@ reviews:
         Focus on behavioral regressions, data loss, wrong error handling, retry semantics, resource cleanup, subprocess safety, timeouts, and concurrency issues.
         Treat formatting and naming as low priority unless they hide a correctness problem or make the code materially harder to maintain.
         Prefer simple control flow, small single-responsibility functions, and files with clear ownership.
-        Flag changed files that clearly grow beyond about 250 lines or mix unrelated responsibilities when a practical split would improve maintainability.
-        Flag excessive nesting, overly dense functions, avoidable clones, magic values, and suggestions that conflict with the repository's Rust conventions.
-        Do not ask for extra comments unless the logic is genuinely hard to understand without them.
-        Prefer findings that explain user impact and missing tests.
+
+        Enforce the following repository rules:
+        - Flag `unwrap`, `expect`, `unwrap_or`, `panic!`, `todo!` outside of test modules.
+        - Flag `clone()` without clear justification.
+        - Flag magic numbers and magic strings — require constants or enums.
+        - Flag status/type fields stored as strings — require enums.
+        - Flag dynamic SQL queries — require `query!` (compile-time checked).
+        - Flag `#[allow(...)]` without explicit justification in the PR description.
+        - Flag `anyhow` usage — require `thiserror` for error types.
+        - Flag nesting deeper than 2 levels.
+        - Flag files growing beyond ~250 lines of code; suggest splitting when a practical split exists.
+        - Flag helper functions that have side effects.
+        - Prefer `?` propagation over `map_err`.
+
+        Do not flag: pure formatting/style, missing doc comments, naming preferences (unless genuinely misleading).
+        Prefer findings that explain user or operational impact and missing tests.
     - path: ".github/workflows/**"
       instructions: |
         Focus on broken triggers, wrong branch filters, missing permissions, cache correctness, and steps that can silently pass while skipping verification.
-    - path: "Dockerfile"
-      instructions: |
-        Focus on runtime correctness, missing packages, image size regressions, cache invalidation mistakes, and security-sensitive defaults.
     - path: "scripts/**"
       instructions: |
         Focus on shell safety, quoting, error propagation, portability, and failure handling.
+    - path: "Dockerfile"
+      instructions: |
+        Focus on runtime correctness, missing packages, image size regressions, cache invalidation mistakes, and security-sensitive defaults.
   auto_review:
     enabled: true
     auto_incremental_review: true
