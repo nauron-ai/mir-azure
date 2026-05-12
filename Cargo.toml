@@ -17,7 +17,7 @@ serde_json = "1.0.145"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream", "multipart"] }
 bytes = "1.9"
 aws-config = { version = "1.8.12", features = ["behavior-version-latest"] }
-aws-sdk-s3 = { version = "1.120.0", default-features = false, features = ["rustls", "rt-tokio"] }
+aws-sdk-s3 = { version = "1.132.0", default-features = false, features = ["rustls", "rt-tokio"] }
 thiserror = "2.0.18"
 clap = { version = "4.5.54", features = ["derive", "env"] }
 nauron-contracts = { git = "https://github.com/nauron-ai/nauron-contracts.git", tag = "0.1.0" }
