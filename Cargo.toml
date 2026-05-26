@@ -13,7 +13,7 @@ tokio = { version = "1.49.0", features = ["io-util", "macros", "process", "rt-mu
 tokio-util = { version = "0.7.18", features = ["io"] }
 rdkafka = { version = "0.39.0", features = ["cmake-build", "tokio", "ssl"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.145"
+serde_json = "1.0.150"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream", "multipart"] }
 bytes = "1.9"
 aws-config = { version = "1.8.12", features = ["behavior-version-latest"] }
