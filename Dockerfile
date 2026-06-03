@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM rust:1.95.0-slim-bookworm AS builder
+FROM rust:1.96.0-slim-bookworm AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
 
